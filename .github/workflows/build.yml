@@ -1,0 +1,115 @@
+# Build from TurBoTse's kernal4.4 repo
+# BY: TurBoTse
+
+name: Build from TurBoTse's kernal4.4 repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      custom_modify:
+        type: boolean
+        description: 'whether to custom_modify'
+        default: true
+      release:
+        type: boolean
+        description: 'upload firmware to release'
+        default: true
+#  watch:                                                       # 监视操作
+#    types: [started]                                           # 点击 Star 之后
+env:
+  build_dir: /opt/padavan                                       # 源码目录
+  images_dir: /opt/images                                       # 固件目录
+  work_dir: /opt/padavan/trunk                                  # 工作目录
+  config_dir: /opt/padavan/trunk/configs/templates              # 设备模板目录
+  src_git: https://github.com/Ferdavis9/padavan2.git              # 源码地址
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+#    if: github.event.repository.owner.id == github.event.sender.id  # 自己点的 Star
+    env:
+      build_variant: ${{ matrix.build_variant }}
+      targets: ${{ matrix.targets }}
+    strategy:
+      matrix:
+        include:
+          - build_variant: "mt7621"
+            targets: "XY-C1"
+    steps:
+      - uses: actions/checkout@main    # 导入主分支
+      - uses: hendrikmuhs/ccache-action@main
+        with:
+          key: ${{ matrix.targets }}
+      - uses: actions/setup-go@main
+        with:
+          go-version: '1.22.3'
+          check-latest: true
+          cache: false
+      - name: Prepare environment      # 准备编译环境
+        run: |                         # 安装依赖包
+          sudo apt update
+          sudo apt upgrade
+          sudo apt install libtool-bin gperf python3-docutils autopoint gettext ccache
+          sudo timedatectl set-timezone 'Asia/Shanghai'  # 设置时区
+      - name: Clone source code
+        run: |                         # 克隆源码
+          git clone --depth=1 $src_git $build_dir
+          mkdir -p $images_dir
+#      - name: Prepare toolchain
+#        run: |                         # 下载预编译的构建工具链
+#          cd $build_dir/toolchain-mipsel
+#          sh dl_toolchain.sh
+      - name: Modify custom configs
+        if: ${{ github.event.inputs.custom_modify == 'true' }}
+        run: |                         # 拷贝文件并修改
+          if [ -d TurBoTse/config ]; then cp -f TurBoTse/config/* $work_dir; fi
+          if [ -d TurBoTse/modify ]; then cp -rf TurBoTse/modify/* $work_dir; fi
+          if [ -d TurBoTse/scripts ]; then cp -f TurBoTse/scripts/* $work_dir; fi
+          cd $config_dir
+          for m in $targets; do if [ -f $m.config ]; then \
+          ##科学上网##
+          echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=n" >> $m.config #科学上网插件，选择n后全部有关插件都不集成
+          echo "CONFIG_FIRMWARE_INCLUDE_XRAY=n" >> $m.config #集成xray执行文件  ~4.5M
+          echo "CONFIG_FIRMWARE_INCLUDE_V2RAY=n" >> $m.config #集成v2ray执行文件
+          echo "CONFIG_FIRMWARE_INCLUDE_TROJAN=n" >> $m.config #集成trojan执行文件  ~1.2M
+          echo "CONFIG_FIRMWARE_INCLUDE_SSOBFS=n" >> $m.config #simple-obfs混淆插件
+          ##广告管理##
+          echo "CONFIG_FIRMWARE_INCLUDE_ADBYBY=n" >> $m.config #adbyby plus+
+          ##DNS服务##
+          echo "CONFIG_FIRMWARE_INCLUDE_SMARTDNS=n" >> $m.config #smartdns
+          echo "CONFIG_FIRMWARE_INCLUDE_ADGUARDHOME=n" >> $m.config #adg DNS去AD
+          ##内网穿透服务##
+          echo "CONFIG_FIRMWARE_INCLUDE_ZEROTIER=n" >> $m.config #zerotier ~1.3M
+          echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=n" >> $m.config #aliddns
+          echo "CONFIG_FIRMWARE_INCLUDE_DDNSTO=n" >> $m.config #ddnsto  ~0.5M
+          echo "CONFIG_FIRMWARE_INCLUDE_ALDRIVER=n" >> $m.config  #ALDRIVER  ~3m
+          echo "CONFIG_FIRMWARE_INCLUDE_SQM=n" >> $m.config #SQM
+          ##CPU超频##
+          echo "CONFIG_FIRMWARE_INCLUDE_OC=n" >> $m.config #CPU超频开关
+          echo 'CONFIG_FIRMWARE_MT7621_OC="0x312"' >> $m.config #此处填写对应频率的十六进制：1000Mhz=0x312 1100Mhz=0x362 1120Mhz=0x372 1200Mhz=0x3B2
+          for MOD in UFSD FAT EXFAT EXT2 EXT3 EXT4 XFS FUSE SWAP; do
+              sed -i "s/CONFIG_FIRMWARE_ENABLE_${MOD}=y/CONFIG_FIRMWARE_ENABLE_${MOD}=n/" $m.config; done; \
+          for MOD in UVC SERIAL AUDIO LPRD U2EC HDPARM PARTED SMBD FTPD ARIA ARIA_WEB_CONTROL DUMP1090 RTL_SDR HID XFRM QOS IMQ IFB IPSET NFSD NFSC CIFS NTFS_3G TCPDUMP SMBD36 WINS SMBD_SYSLOG RPL2TP EAP_PEAP HTTPS SFTP DROPBEAR DROPBEAR_FAST_CODE OPENSSH OPENVPN SSWAN OPENSSL_EC OPENSSL_EXE XUPNPD MINIDLNA FIREFLY FFMPEG_NEW TRANSMISSION TRANSMISSION_WEB_CONTROL CURL GDUT_DRCOM DOGCOM MINIEAP NJIT_CLIENT NAPT66 SOFTETHERVPN_SERVER SOFTETHERVPN_CLIENT SOFTETHERVPN_CMD VLMCSD TTYD LRZSZ HTOP NANO IPERF3 MTR SOCAT SRELAY MENTOHUST SCUTCLIENT FRPC FRPS TUNSAFE WIREGUARD SHADOWSOCKS XRAY V2RAY TROJAN SSOBFS ADBYBY KOOLPROXY SMARTDNS SMARTDNSBIN ADGUARDHOME CADDY CADDYBIN WYY WYYBIN ZEROTIER ALIDDNS DDNSTO ALDRIVER MENTOHUST SQM DNSFORWARDER CLOUDFLAREDDNS NVPPROXY DDNS_SSL SSSERVER NPC KUMASOCKS IPT2SOCKS MICROSOCKS; do
+              sed -i "s/CONFIG_FIRMWARE_INCLUDE_${MOD}=y/CONFIG_FIRMWARE_INCLUDE_${MOD}=n/" $m.config; done; \
+          fi; done
+          cd $work_dir
+          for m in $targets; do if [ -f $m.config ]; then echo "拷贝 $m.config"; cp -f ./$m.config $config_dir/$m.config; fi; done; \
+          for m in $targets; do if [ -f public.sh ]; then echo "执行 public.sh"; sh ./public.sh; fi; if [ -f $m.sh ]; then echo "执行 $m.sh"; sh ./$m.sh; fi; done; \
+          echo "TAG_ANME=$(date +%Y%m%d)" >> $GITHUB_ENV
+      - name: Start build firmware
+        run: |                         # 执行构建固件
+          cd $build_dir
+          for m in $targets; do fakeroot sudo make $m; \
+          if [ $? = 0 ]; then cp -f $work_dir/images/*.trx $images_dir/TurBoTse_${m}_$TAG_ANME.trx; else exit 1; fi; done; \
+      - uses: actions/upload-artifact@main
+        with:
+          name: TurBoTse_4.4_${{ matrix.targets }}
+          path: ${{ env.images_dir }}/*.trx
+      - uses: ncipollo/release-action@main
+        if: ${{ github.event.inputs.release == 'true' }}
+        with:
+          commit: ${{ github.sha }}
+          tag: ${{ env.TAG_ANME }}
+          artifacts: ${{ env.images_dir }}/*.trx
+          allowUpdates: true
+          omitBodyDuringUpdate: true
